@@ -1,5 +1,24 @@
 # Cómo probar el osito paso a paso
 
+## ⭐ Lo más fácil: la app (placa enchufada por USB)
+
+1. Instala Python (<https://www.python.org/downloads/>, marca **"Add python.exe to PATH"**)
+   y el driver USB de tu placa (CH340 o CP210x, ver README).
+2. Descarga el repositorio (GitHub → **Code → Download ZIP**) y descomprímelo.
+3. Enchufa la placa y haz doble clic en **`Osito.bat`**. Se abre la ventana de la app.
+4. En la app → **🔌 Grabar el osito en la placa** → elige tu placa → **Grabar**
+   (solo la primera vez o cuando haya firmware nuevo).
+5. ✅ El chip de arriba dice **USB COMx** y en la pantalla de la placa sale un **punto azul**.
+6. **⚙️ Ajustes** → pega tu API key de Anthropic → Guardar. Ya piensa con Claude.
+7. Prueba: escribe en el chat, pulsa 🍫 Comer desde la app o toca la placa,
+   y en **💻 Claude Code → Conectar** para que siga a Claude Code.
+
+![La app del osito](docs/app.png)
+
+Si prefieres hacerlo paso a paso, o usar la placa por WiFi sin cable, sigue abajo.
+
+---
+
 Necesitas: la placa, un cable USB **de datos**, un PC con Windows y Chrome/Edge,
 y Python (<https://www.python.org/downloads/>, marca **"Add python.exe to PATH"**).
 Descarga el repositorio: botón verde **Code → Download ZIP** en GitHub y descomprímelo.

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Osito</title>
+<style>
+  :root {
+    --bg: #fff4f1; --card: #ffffff; --ink: #4e281c; --soft: #8a5a4a; --line: #f0d8d2;
+    --pink: #f4a8b8; --pink-d: #e2809a; --muzzle: #fcd0d6; --choco: #4e281c; --choco-hi: #96583f;
+    --ok: #6cbf64; --mid: #f0be46; --low: #e25046; --blue: #5aaaf0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1719; --card: #2a2124; --ink: #f6e6e0; --soft: #c9a79c; --line: #3d3034; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px; height: 100vh; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  main > .col:first-child { overflow-y: auto; }
+  h1 { font-size: 1.3rem; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: .78rem; padding: 3px 9px; border-radius: 99px; background: var(--line); color: var(--soft); }
+  .chip.on { background: #d9f2d6; color: #2f6b29; }
+  .chip.warn { background: #fdecc4; color: #7a5a06; }
+  .chip.bad { background: #fbd6d3; color: #8a2019; }
+  #stage { display: grid; place-items: center; background: linear-gradient(#fff0ec 70%, #f6dcd6 70%); border-radius: 14px; height: 210px; position: relative; overflow: hidden; }
+  #stage.noche { background: linear-gradient(#262248 70%, #1c1a38 70%); }
+  #bocadillo { position: absolute; top: 8px; left: 8px; right: 8px; background: #fff; color: #4e281c; border: 2px solid var(--choco); border-radius: 12px; padding: 6px 10px; font-size: .9rem; opacity: 0; transition: opacity .3s; }
+  #bocadillo.show { opacity: 1; }
+  svg#oso { width: 190px; height: 170px; margin-top: 22px; animation: respira 3.4s ease-in-out infinite; }
+  @keyframes respira { 50% { transform: translateY(-3px) scaleY(1.015); } }
+  .bars { display: grid; gap: 8px; margin-top: 12px; }
+  .bar { display: grid; grid-template-columns: 80px 1fr 34px; align-items: center; gap: 8px; font-size: .85rem; }
+  .track { height: 10px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; width: 0; border-radius: 99px; transition: width .6s, background .6s; }
+  .acciones { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
+  button { font: inherit; cursor: pointer; border: 2px solid var(--choco); background: var(--pink); color: #4e281c; border-radius: 12px; padding: 8px 10px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .acciones button { padding: 8px 2px; font-size: .78rem; display: grid; gap: 2px; justify-items: center; }
+  .acciones span { font-size: 1.3rem; }
+  #chat { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; min-height: 240px; }
+  .msg { max-width: 80%; padding: 8px 12px; border-radius: 14px; line-height: 1.35; }
+  .msg.osito { background: var(--muzzle); color: #4e281c; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.tu { background: var(--choco); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.sistema { align-self: center; font-size: .8rem; color: var(--soft); background: none; }
+  .msg small { display: block; opacity: .6; font-size: .72rem; }
+  form.enviar { display: flex; gap: 8px; margin-top: 12px; }
+  input, select { font: inherit; padding: 9px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+  details { border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .fila { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  pre { background: #1d1719; color: #e7d9d3; border-radius: 10px; padding: 8px; font-size: .72rem; max-height: 140px; overflow: auto; white-space: pre-wrap; }
+  .nota { font-size: .8rem; color: var(--soft); margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <section class="col">
+    <div class="card">
+      <h1>🐻 <span id="nombre">Osito</span></h1>
+      <div class="chips">
+        <span class="chip" id="c-placa">Buscando placa...</span>
+        <span class="chip" id="c-ia">IA</span>
+        <span class="chip" id="c-claude">Claude Code</span>
+      </div>
+      <div id="stage">
+        <div id="bocadillo"></div>
+        <svg id="oso" viewBox="-50 -42 100 92" aria-label="Osito">
+          <circle cx="-31" cy="-22" r="14" fill="var(--pink)"/><circle cx="-31" cy="-22" r="8" fill="var(--pink-d)"/>
+          <circle cx="31" cy="-22" r="14" fill="var(--pink)"/><circle cx="31" cy="-22" r="8" fill="var(--pink-d)"/>
+          <ellipse cx="0" cy="8" rx="42" ry="36" fill="var(--pink)"/>
+          <g id="mejillas" opacity="0"><ellipse cx="-27" cy="18" rx="6.5" ry="3.8" fill="#f06e91"/><ellipse cx="27" cy="18" rx="6.5" ry="3.8" fill="#f06e91"/></g>
+          <g id="ojos" stroke="var(--choco)" stroke-width="4.6" stroke-linecap="round" fill="none"></g>
+          <ellipse cx="0" cy="24" rx="20" ry="13" fill="var(--muzzle)"/>
+          <g id="boca" stroke="var(--choco)" stroke-width="1.7" stroke-linecap="round" fill="none"></g>
+          <ellipse cx="0" cy="17" rx="8.5" ry="6" fill="var(--choco)"/><ellipse cx="-3" cy="15" rx="2.6" ry="1.5" fill="var(--choco-hi)"/>
+          <text id="zzz" x="30" y="-30" font-size="14" fill="#ffe9a0" opacity="0">z</text>
+        </svg>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="acciones" id="acciones"></div>
+      <p class="nota" id="nota-acciones"></p>
+    </div>
+    <div class="card">
+      <details id="ajustes">
+        <summary>⚙️ Ajustes</summary>
+        <p class="nota">API key de Anthropic (se guarda solo en este PC, en bridge/config.json):</p>
+        <div class="fila"><input id="key" type="password" placeholder="sk-ant-..."><button onclick="guardar()">Guardar</button></div>
+        <div class="fila"><select id="modelo">
+          <option value="claude-opus-5">Claude Opus 5 (mejor)</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 (mas barato)</option>
+        </select></div>
+      </details>
+      <details>
+        <summary>💻 Claude Code</summary>
+        <p class="nota">El osito saca el portatil cuando Claude trabaja, te avisa cuando pide permiso y celebra cuando termina. Abre una sesion nueva de Claude Code tras activarlo.</p>
+        <div class="fila"><button id="b-hooks" onclick="hooks()">Conectar</button></div>
+      </details>
+      <details>
+        <summary>🔌 Grabar el osito en la placa</summary>
+        <div class="fila"><select id="placa"></select><button id="b-grabar" onclick="grabar()">Grabar</button></div>
+        <p class="nota">Si se queda en "Connecting...", manten pulsado BOOT en la placa.</p>
+        <pre id="log" hidden></pre>
+      </details>
+      <details>
+        <summary>📱 Placa por WiFi / movil</summary>
+        <p class="nota">Si la placa no esta enchufada, en la red <b>Osito-Config</b> pon como servidor <b id="ip"></b> y token <b id="tok"></b>. Esa misma direccion en el movil abre el chat.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="card col" style="gap:0">
+    <h1>💬 Chat</h1>
+    <div id="chat" style="margin-top:12px"></div>
+    <form class="enviar" onsubmit="escribir(event)">
+      <input id="msg" placeholder="Dile algo a tu osito..." autocomplete="off" autofocus>
+      <button>Enviar</button>
+    </form>
+  </section>
+</main>
+
+<script>
+const ACCIONES = [["🍫","Comer"],["⚽","Jugar"],["❤️","Mimar"],["🌙","Dormir"],["🫧","Limpiar"]];
+const BARRAS = [["food","Comida"],["fun","Diversion"],["energy","Energia"],["hygiene","Higiene"]];
+let ultimoId = 0, estado = {};
+
+document.getElementById("bars").innerHTML = BARRAS.map(([k,n]) =>
+  `<div class="bar"><span>${n}</span><div class="track"><div class="fill" id="f-${k}"></div></div><span id="v-${k}">–</span></div>`).join("");
+document.getElementById("acciones").innerHTML = ACCIONES.map(([e,n],i) =>
+  `<button onclick="accion(${i})" data-accion><span>${e}</span>${n}</button>`).join("");
+
+// ---- cara del osito (igual que en la placa) ----
+const ojosX = x => `<path d="M${x-6.5} -4.5 L${x+6.5} 8.5 M${x-6.5} 8.5 L${x+6.5} -4.5"/>`;
+const ojosFeliz = x => `<path d="M${x-6.5} 4.3 L${x} -1.6 L${x+6.5} 4.3"/>`;
+const ojosDormido = x => `<path d="M${x-6.5} 2 Q${x} 7 ${x+6.5} 2" stroke-width="3.4"/>`;
+const BOCAS = {
+  normal: `<path d="M0 22 V26 M-5 26 L-2.5 28.5 L0 26 L2.5 28.5 L5 26"/>`,
+  feliz: `<path d="M0 22 V25"/><path d="M-6 26 Q0 34 6 26 Z" fill="#782832" stroke="none"/>`,
+  triste: `<path d="M0 22 V27 M-6 31 L0 27.5 L6 31"/>`,
+  sorprendido: `<path d="M0 22 V24"/><ellipse cx="0" cy="28.5" rx="4" ry="3.6" fill="#782832" stroke="none"/>`,
+  dormido: `<path d="M0 22 V26"/><ellipse cx="0" cy="29" rx="2.2" ry="1.8" fill="#782832" stroke="none"/>`,
+};
+function cara(emo, dormido) {
+  const ojos = dormido ? ojosDormido : (emo === "feliz" || emo === "enamorado") ? ojosFeliz : ojosX;
+  document.getElementById("ojos").innerHTML = ojos(-17) + ojos(17);
+  const boca = dormido ? "dormido" : emo === "enamorado" ? "feliz" : emo === "sueno" ? "dormido" : (BOCAS[emo] ? emo : "normal");
+  document.getElementById("boca").innerHTML = BOCAS[boca];
+  document.getElementById("mejillas").setAttribute("opacity", (emo === "feliz" || emo === "enamorado") && !dormido ? 1 : 0);
+  document.getElementById("zzz").setAttribute("opacity", dormido ? 1 : 0);
+  document.getElementById("stage").classList.toggle("noche", !!dormido);
+}
+let emoHasta = 0, emoActual = "normal";
+cara("normal", false);
+setInterval(() => { // parpadeo
+  if (estado.dormido || emoActual === "feliz" || emoActual === "enamorado") return;
+  const o = document.getElementById("ojos"); o.style.transform = "scaleY(.15)"; o.style.transformOrigin = "0 2px";
+  setTimeout(() => o.style.transform = "", 140);
+}, 3500);
+
+function bocadillo(texto) {
+  const b = document.getElementById("bocadillo"); b.textContent = texto; b.classList.add("show");
+  clearTimeout(b._t); b._t = setTimeout(() => b.classList.remove("show"), 5000);
+}
+
+function chip(id, texto, clase) { const c = document.getElementById(id); c.textContent = texto; c.className = "chip " + (clase || ""); }
+
+async function refrescar() {
+  try {
+    const r = await fetch("/api/estado?desde=" + ultimoId); estado = await r.json();
+  } catch { chip("c-placa", "App cerrada", "bad"); return; }
+  document.getElementById("nombre").textContent = estado.nombre;
+  chip("c-placa", estado.placa === "usb" ? "USB " + estado.puerto : estado.placa === "wifi" ? "WiFi" : "Placa sin conectar",
+       estado.placa ? "on" : "bad");
+  chip("c-ia", estado.ia ? "IA: " + estado.modelo.replace("claude-", "") : "IA apagada (Ajustes)", estado.ia ? "on" : "warn");
+  const ag = {nada: "", saludo: "saluda", pensando: "pensando", trabajando: estado.herramienta || "trabajando", permiso: "¡pide permiso!", terminado: "¡terminó!"}[estado.agente];
+  chip("c-claude", estado.hooks ? "Claude Code" + (ag ? ": " + ag : "") : "Claude Code sin conectar", estado.hooks ? (estado.agente === "permiso" ? "warn" : "on") : "");
+  document.getElementById("b-hooks").textContent = estado.hooks ? "Desconectar" : "Conectar";
+  for (const [k] of BARRAS) {
+    const v = estado.stats ? Math.round(estado.stats[k]) : null;
+    const f = document.getElementById("f-" + k);
+    f.style.width = (v ?? 0) + "%"; f.style.background = v > 50 ? "var(--ok)" : v > 25 ? "var(--mid)" : "var(--low)";
+    document.getElementById("v-" + k).textContent = v ?? "–";
+  }
+  const usb = estado.placa === "usb";
+  document.querySelectorAll("[data-accion]").forEach(b => b.disabled = !usb);
+  document.getElementById("nota-acciones").textContent = usb ? "" : "Enchufa la placa por USB para usar los botones.";
+  if (Date.now() > emoHasta) emoActual = "normal";
+  cara(emoActual, estado.dormido);
+  const sel = document.getElementById("placa");
+  if (!sel.options.length) document.getElementById("modelo").value = estado.modelo;
+  if (!sel.options.length) sel.innerHTML = estado.firmwares.map(f => `<option value="${f}">${{cyd:"Cheap Yellow Display (2.8\" tactil)",tdisplay:"TTGO T-Display",generic:"ESP32 + ILI9341"}[f]||f}</option>`).join("");
+  document.getElementById("b-grabar").disabled = estado.grabando;
+  const log = document.getElementById("log"); if (estado.log) { log.hidden = false; log.textContent = estado.log; log.scrollTop = 1e9; }
+  document.getElementById("ip").textContent = estado.ip; document.getElementById("tok").textContent = estado.token;
+  const chat = document.getElementById("chat");
+  for (const m of estado.chat) {
+    ultimoId = Math.max(ultimoId, m.id);
+    const d = document.createElement("div"); d.className = "msg " + m.quien; d.textContent = m.texto;
+    if (m.quien === "osito") { emoActual = m.emocion; emoHasta = Date.now() + 5000; bocadillo(m.texto); cara(emoActual, estado.dormido); }
+    chat.append(d); chat.scrollTop = 1e9;
+  }
+}
+setInterval(refrescar, 1000); refrescar();
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.detail || "Error " + r.status); }
+  return r;
+}
+function accion(i) { post("/api/accion", {item: i}); }
+function escribir(e) { e.preventDefault(); const m = document.getElementById("msg"); if (!m.value.trim()) return; post("/api/escribir", {mensaje: m.value}); m.value = ""; }
+function guardar() { post("/api/ajustes", {api_key: document.getElementById("key").value, modelo: document.getElementById("modelo").value}); document.getElementById("key").value = ""; }
+document.getElementById("modelo").addEventListener("change", e => post("/api/ajustes", {modelo: e.target.value}));
+function hooks() { post("/api/hooks", {instalar: !estado.hooks}); }
+function grabar() { if (confirm("Cerrar otros programas que usen la placa (Arduino, esptool web) y grabar?")) post("/api/grabar", {placa: document.getElementById("placa").value}); }
+</script>
+</body>
+</html>

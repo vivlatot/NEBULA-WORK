@@ -37,3 +37,6 @@ bool aiPortal();                                       // red "Osito-Config" abi
 bool aiRequest(const char* event, const AiState& st);  // encola un evento; false si ocupado
 bool aiPoll(AiReply& out);                             // true si ha llegado una frase
 bool aiAgent(AgentInfo& out);                          // true si Claude Code ha cambiado de estado
+bool aiUsb();                                          // la app del PC esta conectada por USB
+void aiLoop(const AiState& st);                        // leer USB (llamar en cada loop)
+bool aiRemoteAction(uint8_t& item);                    // la app pide una accion del menu

@@ -617,7 +617,7 @@ static void renderScene(uint32_t now) {
 
   // Indicador de WiFi (punto en la esquina)
   if (aiEnabled() || aiPortal()) {
-    uint16_t c = aiOnline() ? C_BAR_OK : (aiPortal() ? C_BAR_MID : C_BAR_LOW);
+    uint16_t c = aiUsb() ? C_BALL : aiOnline() ? C_BAR_OK : (aiPortal() ? C_BAR_MID : C_BAR_LOW);
     spr.fillCircle(AW - 6, 6, 3, c);
   }
 
@@ -977,6 +977,7 @@ static void handleInput(uint32_t now) {
 
 // ---------------------------------------------------------------------
 void setup() {
+  Serial.setRxBufferSize(1024);
   Serial.begin(115200);
   pinMode(PIN_BTN_A, INPUT_PULLUP);
 #ifdef PIN_BTN_B
@@ -1022,11 +1023,20 @@ void setup() {
 // Frases que llegan del cerebro (servidor puente)
 static void updateBrain(uint32_t now) {
   static bool greeted = false, portalHint = false;
+  AiState st{pet.food, pet.fun, pet.energy, pet.hygiene, (bool)pet.sleeping, (bool)pet.sick,
+             pet.poops, pet.ageSec / 60};
+  aiLoop(st);
+  uint8_t item;
+  if (aiRemoteAction(item) && item < M_COUNT) {
+    menuSel = item;
+    menuDirty = true;
+    doAction(item);
+  }
   if (aiOnline() && !greeted) {
     greeted = true;
     talk("saludo_al_encender");
   }
-  if (aiPortal() && !portalHint && now > 4000) {
+  if (aiPortal() && !aiUsb() && !portalHint && now > 6000) {
     portalHint = true;
     say("Configurame: WiFi Osito-Config", 8000);
   }

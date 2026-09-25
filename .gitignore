@@ -3,3 +3,4 @@
 include/secrets.h
 bridge/memoria.json
 __pycache__/
+bridge/config.json

@@ -3,6 +3,12 @@
 Un osito rosa con **ojos en X de chocolate** y **nariz de chocolate** que vive en tu ESP32.
 Hay que darle chocolate, jugar con él, mimarlo, dormirlo y limpiarle las caquitas.
 
+**Lo más fácil:** enchufa la placa por USB y abre **`Osito.bat`** → se abre la app
+(chat con el osito, barras en vivo, botones, grabar firmware, conectar Claude Code).
+Guía: [`PROBAR.md`](PROBAR.md).
+
+![App del osito](docs/app.png)
+
 Placas soportadas:
 
 | Placa | Archivo listo para grabar | Controles |

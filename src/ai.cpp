@@ -51,6 +51,14 @@ static volatile bool online = false;
 static volatile bool portalOn = false;
 static WebServer     portal(80);
 
+// Enlace por USB con la app del PC (bridge/servidor.py --usb)
+static volatile uint32_t usbHello = 0;      // ultimo latido recibido
+static uint32_t          usbPending = 0;    // evento enviado esperando frase
+static int8_t            usbAction = -1;    // accion pedida desde la app
+static char              usbBuf[256];
+static size_t            usbLen = 0;
+static bool usbLinked() { return usbHello && millis() - usbHello < 15000; }
+
 // ---------------------------------------------------------------------
 static void loadConfig() {
   Preferences p;
@@ -265,12 +273,37 @@ void aiBegin() {
   xTaskCreatePinnedToCore(netTask, "osito-net", 8192, nullptr, 1, nullptr, 0);
 }
 
-bool aiEnabled() { return cfg.valid(); }
-bool aiOnline() { return online; }
-bool aiBusy() { return busy; }
+bool aiEnabled() { return cfg.valid() || usbLinked(); }
+bool aiOnline() { return online || usbLinked(); }
+bool aiUsb() { return usbLinked(); }
+bool aiBusy() { return busy || (usbPending && millis() - usbPending < 15000); }
 bool aiPortal() { return portalOn; }
 
+static void usbSendState(const char* type, const char* event, const AiState& st) {
+  JsonDocument doc;
+  doc["t"] = type;
+  if (event) doc["evento"] = event;
+  JsonObject s = doc["stats"].to<JsonObject>();
+  s["food"] = (int)st.food;
+  s["fun"] = (int)st.fun;
+  s["energy"] = (int)st.energy;
+  s["hygiene"] = (int)st.hygiene;
+  doc["sleeping"] = st.sleeping;
+  doc["sick"] = st.sick;
+  doc["poops"] = st.poops;
+  doc["age_min"] = st.ageMin;
+  Serial.print("@O ");
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
 bool aiRequest(const char* event, const AiState& st) {
+  if (!online && usbLinked()) {  // sin WiFi pero con la app por USB
+    if (aiBusy()) return false;
+    usbSendState("ev", event, st);
+    usbPending = millis();
+    return true;
+  }
   if (!reqQueue || !online || busy) return false;
   Request q{};
   strlcpy(q.event, event, sizeof(q.event));
@@ -295,4 +328,51 @@ bool aiAgent(AgentInfo& out) {
   }
   portEXIT_CRITICAL(&agentMux);
   return changed;
+}
+
+// ---------------------------------------------------------------------
+//  USB: lineas "@O {json}" en ambos sentidos
+// ---------------------------------------------------------------------
+static void usbHandle(const char* line) {
+  JsonDocument doc;
+  if (deserializeJson(doc, line)) return;
+  const char* t = doc["t"] | "";
+  usbHello = millis();
+  if (!strcmp(t, "say")) {
+    usbPending = 0;
+    pushReply(doc);
+  } else if (!strcmp(t, "agente")) {
+    portENTER_CRITICAL(&agentMux);
+    agent.mode = parseAgent(doc["agente"]);
+    strlcpy(agent.tool, doc["herramienta"] | "", sizeof(agent.tool));
+    agentChanged = true;
+    portEXIT_CRITICAL(&agentMux);
+  } else if (!strcmp(t, "accion")) {
+    usbAction = doc["item"] | -1;
+  }
+}
+
+void aiLoop(const AiState& st) {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      usbBuf[usbLen] = 0;
+      if (usbLen > 3 && !strncmp(usbBuf, "@O ", 3)) usbHandle(usbBuf + 3);
+      usbLen = 0;
+    } else if (usbLen < sizeof(usbBuf) - 1) {
+      usbBuf[usbLen++] = c;
+    }
+  }
+  static uint32_t lastState = 0;
+  if (usbLinked() && millis() - lastState > 3000) {  // la app muestra las barras en vivo
+    lastState = millis();
+    usbSendState("estado", nullptr, st);
+  }
+}
+
+bool aiRemoteAction(uint8_t& item) {
+  if (usbAction < 0) return false;
+  item = usbAction;
+  usbAction = -1;
+  return true;
 }
