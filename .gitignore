@@ -1,2 +1,5 @@
 .pio/
 .vscode/
+include/secrets.h
+bridge/memoria.json
+__pycache__/

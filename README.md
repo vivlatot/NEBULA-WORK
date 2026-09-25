@@ -84,7 +84,41 @@ pio device monitor              # ver mensajes por serie
 Todo en [`include/config.h`](include/config.h): nombre (`PET_NAME`), velocidad del hambre,
 sueño, etc.
 
+## 5. Cerebro con IA (Claude) 🧠
+
+El osito puede hablar con personalidad propia usando Claude. La API key **nunca**
+va en la placa: vive en un pequeño servidor en tu PC (arquitectura "puente").
+
+```
+ [ESP32 osito] --WiFi--> [bridge/servidor.py en tu PC] --internet--> [Claude]
+     evento + barras          personalidad + memoria            frase + emocion
+```
+
+1. **Arranca el servidor** en el PC (misma WiFi que la placa):
+   - Windows: doble clic en `bridge/iniciar_servidor.bat` y pega tu API key
+     (<https://console.anthropic.com/settings/keys>). Sin key funciona en modo prueba.
+   - Linux/Mac: `cd bridge && pip install -r requirements.txt && ANTHROPIC_API_KEY=sk-... python servidor.py`
+   - Al arrancar imprime la dirección, p. ej. `http://192.168.1.50:8765`.
+2. **Conecta la placa al WiFi**: la primera vez el osito crea la red **`Osito-Config`**.
+   Conéctate desde el móvil, abre <http://192.168.4.1> y rellena tu WiFi (2.4 GHz),
+   la dirección del servidor y el token (`osito` por defecto). Se reinicia solo.
+   *(Si compilas tú mismo, también puedes copiar `include/secrets.example.h` a `include/secrets.h`.)*
+3. Punto en la esquina de la pantalla: 🟢 conectado · 🟡 portal de configuración · 🔴 sin WiFi.
+
+Qué hace:
+- Cada vez que lo alimentas, juegas, lo mimas, le tocas la nariz o lo acuestas, Claude
+  escribe su frase según cómo está (hambre, sueño, suciedad...) y elige su cara
+  (feliz, triste, sorprendido, con sueño, enamorado).
+- Si necesita algo, lo pide; cuando está bien, de vez en cuando piensa en voz alta.
+- **Escríbele**: abre la dirección del servidor en el navegador del móvil/PC, escribe
+  algo y su respuesta aparece en la pantalla del osito.
+- Recuerda sus últimas 30 frases (`bridge/memoria.json`) para no repetirse.
+
+Ajustes del servidor (variables de entorno): `OSITO_NOMBRE`, `OSITO_TOKEN`,
+`OSITO_PUERTO` y `OSITO_MODELO` (por defecto `claude-opus-5`; `claude-haiku-4-5` es
+más barato si lo prefieres).
+
 ## Siguiente fase
 
-Ver [`docs/INVESTIGACION.md`](docs/INVESTIGACION.md): darle un cerebro con IA (Claude)
-mediante un servidor puente, y que reaccione a lo que hacen tus agentes en el PC.
+Ver [`docs/INVESTIGACION.md`](docs/INVESTIGACION.md): que el osito reaccione a lo que
+hacen tus agentes de IA en el PC (Claude Code), estilo Claude Desktop Buddy.

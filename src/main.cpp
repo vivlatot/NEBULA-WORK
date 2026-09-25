@@ -6,6 +6,7 @@
 #include <TFT_eSPI.h>
 #include <Preferences.h>
 #include "config.h"
+#include "ai.h"
 
 #if HAS_TOUCH
   #include <SPI.h>
@@ -79,8 +80,13 @@ const char* const MENU_LABEL[M_COUNT] = {"Comer", "Jugar", "Mimar", "Dormir", "L
 uint8_t menuSel   = 0;
 bool    menuDirty = true;
 
-char     msg[40]  = "";
+char     msg[64]  = "";
 uint32_t msgUntil = 0;
+
+// Emocion que pide la IA (dura unos segundos)
+Emotion  emote = EMO_NORMAL;
+uint32_t emoteUntil = 0;
+uint32_t lastChat = 0;
 
 // Layout (se calcula en setup segun la pantalla)
 int W, H, statusH, menuH, AW, AH;
@@ -111,6 +117,13 @@ static void startAnim(Anim a, uint32_t dur) {
   anim = a;
   animStart = millis();
   animDur = dur;
+}
+
+// Cuenta algo al cerebro (servidor puente). La frase llega mas tarde por aiPoll().
+static void talk(const char* event) {
+  AiState st{pet.food, pet.fun, pet.energy, pet.hygiene, (bool)pet.sleeping, (bool)pet.sick,
+             pet.poops, pet.ageSec / 60};
+  if (aiRequest(event, st)) lastChat = millis();
 }
 
 static void resetPet() {
@@ -310,6 +323,44 @@ static void drawBear(const Pen& p, const Face& f, bool night, uint32_t now) {
   ellipse(p, mx - 3, 15, 2.6f, 1.5f, C_CHOCO_HI);
 }
 
+// Bocadillo con el texto partido en lineas (maximo 3)
+static void drawBubble(const char* text) {
+  spr.setTextFont(AH > 120 ? 2 : 1);
+  const int maxW = AW - 24;
+  const int lh = spr.fontHeight();
+  char lines[3][64] = {};
+  int n = 0;
+  char word[64];
+  const char* p = text;
+  while (*p && n < 3) {
+    while (*p == ' ') p++;
+    int wl = 0;
+    while (p[wl] && p[wl] != ' ' && wl < 63) wl++;
+    if (!wl) break;
+    memcpy(word, p, wl);
+    word[wl] = 0;
+    char trial[128];
+    snprintf(trial, sizeof(trial), "%s%s%s", lines[n], lines[n][0] ? " " : "", word);
+    if (spr.textWidth(trial) <= maxW || !lines[n][0]) {
+      strlcpy(lines[n], trial, sizeof(lines[n]));
+      p += wl;
+    } else {
+      n++;
+    }
+  }
+  int count = min(n + 1, 3);
+  if (n < 3 && !lines[n][0]) count = n;
+  if (count < 1) return;
+  int tw = 0;
+  for (int i = 0; i < count; i++) tw = max(tw, (int)spr.textWidth(lines[i]));
+  tw += 12;
+  int th = count * lh + 8;
+  spr.fillRoundRect(4, 4, tw, th, 6, C_WHITE);
+  spr.drawRoundRect(4, 4, tw, th, 6, C_CHOCO);
+  spr.setTextColor(C_CHOCO, C_WHITE);
+  for (int i = 0; i < count; i++) spr.drawString(lines[i], 10, 8 + i * lh);
+}
+
 // ---------------------------------------------------------------------
 //  Escena completa (en el sprite)
 // ---------------------------------------------------------------------
@@ -370,6 +421,18 @@ static void renderScene(uint32_t now) {
     else if (avgStat() > 75) { f.mouth = MOUTH_SMILE; f.blush = true; }
     if (pet.food < 20)   f.tremble = 0.7f;
     if (pet.energy < 20) f.eyeSize = 0.8f;
+
+    // Cara que pide la IA junto con su frase
+    if (anim == A_NONE && now < emoteUntil) {
+      switch (emote) {
+        case EMO_HAPPY:
+        case EMO_LOVE:      f.eyes = EYE_HAPPY; f.mouth = MOUTH_SMILE; f.blush = true; break;
+        case EMO_SAD:       f.mouth = MOUTH_SAD; f.tear = true; break;
+        case EMO_SURPRISED: f.mouth = MOUTH_OPEN; f.open = 0.7f; f.eyeSize = 1.2f; break;
+        case EMO_SLEEPY:    f.eyeSize = 0.75f; f.mouth = MOUTH_SLEEP; break;
+        default: break;
+      }
+    }
   }
 
   switch (anim) {
@@ -443,9 +506,9 @@ static void renderScene(uint32_t now) {
     circle(ground, bx, by, 7, C_BALL);
     circle(ground, bx - 2, by - 2, 2, C_WHITE);
   }
-  if (anim == A_PET || anim == A_LICK) {
+  if (anim == A_PET || anim == A_LICK || (anim == A_NONE && emote == EMO_LOVE && now < emoteUntil)) {
     for (int i = 0; i < 4; i++) {
-      float ht = fmodf(t * 1.6f + i * 0.25f, 1.0f);
+      float ht = fmodf(now / 1250.0f + i * 0.25f, 1.0f);
       heart(body, -38 + i * 25, -20 - ht * 26, 4.5f * (1 - ht * 0.4f), C_HEART);
     }
   }
@@ -462,19 +525,19 @@ static void renderScene(uint32_t now) {
     randomSeed(esp_random());
   }
 
-  // Bocadillo de texto
-  if (now < msgUntil && msg[0]) {
-    spr.setTextFont(AH > 120 ? 2 : 1);
-    int tw = spr.textWidth(msg) + 12;
-    int th = spr.fontHeight() + 8;
-    spr.fillRoundRect(4, 4, tw, th, 6, C_WHITE);
-    spr.drawRoundRect(4, 4, tw, th, 6, C_CHOCO);
-    spr.setTextColor(C_CHOCO, C_WHITE);
-    spr.drawString(msg, 10, 8);
+  // Bocadillo de texto (con salto de linea por palabras)
+  const bool talking = now < msgUntil && msg[0];
+  if (talking) drawBubble(msg);
+  else if (aiBusy()) drawBubble("...");
+
+  // Indicador de WiFi (punto en la esquina)
+  if (aiEnabled() || aiPortal()) {
+    uint16_t c = aiOnline() ? C_BAR_OK : (aiPortal() ? C_BAR_MID : C_BAR_LOW);
+    spr.fillCircle(AW - 6, 6, 3, c);
   }
 
   // Nombre y edad (esquina)
-  if (!(now < msgUntil && msg[0])) {
+  if (!talking && !aiBusy()) {
     char buf[32];
     uint32_t h = pet.ageSec / 3600, m = (pet.ageSec / 60) % 60;
     snprintf(buf, sizeof(buf), "%s  %luh%02lum", PET_NAME, (unsigned long)h, (unsigned long)m);
@@ -596,6 +659,7 @@ static void doAction(uint8_t item) {
       if (pet.food >= 95) {
         say("Estoy lleno!");
         startAnim(A_REFUSE, 1000);
+        talk("comer_pero_lleno");
         break;
       }
       pet.food = clamp100(pet.food + 25);
@@ -603,11 +667,13 @@ static void doAction(uint8_t item) {
       if (pet.poopTimer == 0) pet.poopTimer = random(POOP_DELAY_MIN, POOP_DELAY_MAX);
       say("Nam nam, chocolate!");
       startAnim(A_EAT, 2400);
+      talk("comer");
       break;
     case M_PLAY:
       if (pet.energy < 15) {
         say("Estoy muy cansado...");
         startAnim(A_REFUSE, 1000);
+        talk("jugar_pero_cansado");
         break;
       }
       pet.fun = clamp100(pet.fun + 20);
@@ -615,19 +681,23 @@ static void doAction(uint8_t item) {
       pet.food = clamp100(pet.food - 4);
       say("Yupi!");
       startAnim(A_PLAY, 3000);
+      talk("jugar");
       break;
     case M_PET:
       pet.fun = clamp100(pet.fun + 8);
       say("Te quiero!");
       startAnim(A_PET, 2000);
+      talk("mimar");
       break;
     case M_SLEEP:
       pet.sleeping = !pet.sleeping;
       if (pet.sleeping) {
         say("Buenas noches...");
+        talk("dormir");
       } else {
         say("Buenos dias!");
         startAnim(A_WAKE, 1500);
+        talk("despertar");
       }
       menuDirty = true;
       break;
@@ -636,6 +706,7 @@ static void doAction(uint8_t item) {
       pet.hygiene = 100;
       say("Limpito!");
       startAnim(A_CLEAN, 2000);
+      talk("limpiar");
       break;
   }
   savePet();
@@ -651,9 +722,11 @@ static void petBear(bool onNose) {
   if (onNose) {
     say("Mmm, sabe a chocolate");
     startAnim(A_LICK, 1400);
+    talk("tocar_nariz");
   } else {
     say("Jiji!");
     startAnim(A_PET, 1600);
+    talk("caricia_cabeza");
   }
 }
 
@@ -714,7 +787,12 @@ static void tickSecond() {
   uint32_t now = millis();
   if (!pet.sleeping && anim == A_NONE && now > msgUntil && now - lastNeedMsg > 15000) {
     lastNeedMsg = now;
-    if (pet.food < 30)         say("Tengo hambre...");
+    bool needy = pet.food < 30 || pet.energy < 25 || pet.hygiene < 30 || pet.fun < 30;
+    if (aiOnline()) {
+      // Con IA: pide lo que necesita cada minuto y comenta cosas de vez en cuando
+      if (needy && now - lastChat > 60000) talk("pedir_lo_que_necesita");
+      else if (!needy && now - lastChat > 240000) talk("pensar_en_voz_alta");
+    } else if (pet.food < 30)  say("Tengo hambre...");
     else if (pet.energy < 25)  say("Tengo sueno...");
     else if (pet.hygiene < 30) say("Necesito un banito");
     else if (pet.fun < 30)     say("Juegas conmigo?");
@@ -843,7 +921,27 @@ void setup() {
   drawStatus(true);
   drawMenu();
   say(pet.ageSec < 5 ? "Hola! Soy tu osito" : "Te he echado de menos!", 3000);
+  aiBegin();  // despues del sprite: el WiFi usa la RAM que queda
   lastTick = millis();
+}
+
+// Frases que llegan del cerebro (servidor puente)
+static void updateBrain(uint32_t now) {
+  static bool greeted = false, portalHint = false;
+  if (aiOnline() && !greeted) {
+    greeted = true;
+    talk("saludo_al_encender");
+  }
+  if (aiPortal() && !portalHint && now > 4000) {
+    portalHint = true;
+    say("Configurame: WiFi Osito-Config", 8000);
+  }
+  AiReply r;
+  if (aiPoll(r)) {
+    say(r.text, 5000);
+    emote = r.emotion;
+    emoteUntil = now + 5000;
+  }
 }
 
 void loop() {
@@ -855,6 +953,7 @@ void loop() {
     tickSecond();
   }
   if (anim != A_NONE && now - animStart >= animDur) anim = A_NONE;
+  updateBrain(now);
 
   if (now - lastFrame >= 40) {  // ~25 fps
     lastFrame = now;
