@@ -181,11 +181,36 @@ static void doRequest(const Request& q) {
   }
 }
 
+static portMUX_TYPE agentMux = portMUX_INITIALIZER_UNLOCKED;
+static AgentInfo     agent{AG_NONE, ""};
+static uint32_t      agentSeq = 0;
+static bool          agentChanged = false;
+
+static AgentMode parseAgent(const char* e) {
+  if (!e) return AG_NONE;
+  if (!strcmp(e, "saludo")) return AG_HELLO;
+  if (!strcmp(e, "pensando")) return AG_THINK;
+  if (!strcmp(e, "trabajando")) return AG_WORK;
+  if (!strcmp(e, "permiso")) return AG_ASK;
+  if (!strcmp(e, "terminado")) return AG_DONE;
+  return AG_NONE;
+}
+
 static void pollInbox() {
   String out;
   if (!httpCall("GET", "/bandeja", "", out)) return;
   JsonDocument res;
-  if (!deserializeJson(res, out) && res["hay"] == true) pushReply(res);
+  if (deserializeJson(res, out)) return;
+  if (res["hay"] == true) pushReply(res);
+  uint32_t seq = res["seq"] | 0;
+  if (seq != agentSeq) {
+    agentSeq = seq;
+    portENTER_CRITICAL(&agentMux);
+    agent.mode = parseAgent(res["agente"]);
+    strlcpy(agent.tool, res["herramienta"] | "", sizeof(agent.tool));
+    agentChanged = true;
+    portEXIT_CRITICAL(&agentMux);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -225,7 +250,7 @@ static void netTask(void*) {
     if (xQueueReceive(reqQueue, &q, pdMS_TO_TICKS(portalOn ? 5 : 100)) == pdTRUE) {
       if (online) doRequest(q);
       busy = false;
-    } else if (online && millis() - lastInbox > 6000) {
+    } else if (online && millis() - lastInbox > 2500) {
       lastInbox = millis();
       pollInbox();
     }
@@ -259,3 +284,15 @@ bool aiRequest(const char* event, const AiState& st) {
 }
 
 bool aiPoll(AiReply& out) { return replyQueue && xQueueReceive(replyQueue, &out, 0) == pdTRUE; }
+
+bool aiAgent(AgentInfo& out) {
+  bool changed;
+  portENTER_CRITICAL(&agentMux);
+  changed = agentChanged;
+  if (changed) {
+    out = agent;
+    agentChanged = false;
+  }
+  portEXIT_CRITICAL(&agentMux);
+  return changed;
+}

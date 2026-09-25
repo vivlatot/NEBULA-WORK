@@ -215,14 +215,81 @@ def hablar(ev: Evento, x_osito_token: str | None = Header(default=None)) -> Resp
     return r
 
 
+# ---------------------------------------------------------------------------
+# Claude Code -> osito (lo envia claude_hook.py en cada evento)
+# ---------------------------------------------------------------------------
+agente = {"estado": "nada", "herramienta": "", "seq": 0, "t": 0.0}
+
+ESTADO_POR_EVENTO = {
+    "SessionStart": "saludo",
+    "UserPromptSubmit": "pensando",
+    "PreToolUse": "trabajando",
+    "PostToolUse": "pensando",
+    "PermissionRequest": "permiso",
+    "Stop": "terminado",
+    "SessionEnd": "nada",
+}
+
+FRASES_AGENTE = {
+    "saludo": ["Hola Claude! A trabajar juntos", "Nueva sesion! Traigo chocolate"],
+    "permiso": ["Claude te necesita! Mira la pantalla", "Psst! Claude pide permiso", "Eh! Claude te esta esperando"],
+}
+
+
+class EventoAgente(BaseModel):
+    hook_event_name: str
+    session_id: str = ""
+    cwd: str = ""
+    tool_name: str = ""
+    notification_type: str = ""
+    file: str = ""
+
+
+def celebrar(proyecto: str) -> None:
+    ev = ultimo_estado.model_copy(update={"evento": "claude_termino_su_tarea", "detalle": f"en el proyecto {proyecto}"})
+    r = pensar(ev) if client else Respuesta(texto="Claude ha terminado! Bien hecho!", emocion="feliz")
+    recordar("claude_termino", r.texto)
+    bandeja.append(r)
+
+
+@app.post("/agente")
+def evento_agente(e: EventoAgente, x_osito_token: str | None = Header(default=None)) -> dict:
+    comprobar(x_osito_token)
+    nombre = e.hook_event_name
+    estado = ESTADO_POR_EVENTO.get(nombre)
+    if nombre == "Notification":
+        # permission_prompt = pide permiso; idle_prompt = te espera para seguir
+        estado = "permiso" if e.notification_type in ("permission_prompt", "idle_prompt", "") else None
+    if estado is None:
+        return {"ok": True}
+    herramienta = e.tool_name + (f" {e.file}" if e.file else "")
+    cambio = estado != agente["estado"] or (estado == "trabajando" and herramienta != agente["herramienta"])
+    agente.update(estado=estado, herramienta=herramienta if estado == "trabajando" else "", t=time.time())
+    if cambio:
+        agente["seq"] += 1
+        proyecto = Path(e.cwd).name if e.cwd else ""
+        print(f"[ claude ] {estado:>11} {herramienta} {proyecto}")
+        if estado in FRASES_AGENTE:
+            bandeja.append(Respuesta(texto=random.choice(FRASES_AGENTE[estado]),
+                                     emocion="sorprendido" if estado == "permiso" else "feliz"))
+        elif estado == "terminado":
+            threading.Thread(target=celebrar, args=(proyecto,), daemon=True).start()
+    return {"ok": True}
+
+
 @app.get("/bandeja")
 def recoger(x_osito_token: str | None = Header(default=None)) -> dict:
-    """La placa pregunta si alguien le ha escrito desde la web."""
+    """La placa pregunta si hay algo nuevo: mensajes de la web y estado de Claude Code."""
     comprobar(x_osito_token)
+    # Si Claude Code lleva mucho sin dar senales, el osito deja el portatil
+    if agente["estado"] in ("pensando", "trabajando") and time.time() - agente["t"] > 600:
+        agente.update(estado="nada", herramienta="")
+        agente["seq"] += 1
+    out = {"hay": False, "agente": agente["estado"], "herramienta": agente["herramienta"][:24], "seq": agente["seq"]}
     if bandeja:
         r = bandeja.popleft()
-        return {"hay": True, "texto": r.texto, "emocion": r.emocion}
-    return {"hay": False}
+        out.update(hay=True, texto=r.texto, emocion=r.emocion)
+    return out
 
 
 class Carta(BaseModel):

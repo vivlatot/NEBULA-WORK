@@ -88,6 +88,13 @@ Emotion  emote = EMO_NORMAL;
 uint32_t emoteUntil = 0;
 uint32_t lastChat = 0;
 
+// Lo que hace Claude Code en el PC
+AgentInfo agentNow{AG_NONE, ""};
+uint32_t  agentSince = 0;
+bool      askDismissed = false;
+
+static bool claudeAsking() { return agentNow.mode == AG_ASK && !askDismissed; }
+
 // Layout (se calcula en setup segun la pantalla)
 int W, H, statusH, menuH, AW, AH;
 
@@ -361,6 +368,36 @@ static void drawBubble(const char* text) {
   for (int i = 0; i < count; i++) spr.drawString(lines[i], 10, 8 + i * lh);
 }
 
+// Portatil pequeno con lo que esta haciendo Claude Code
+static void drawLaptop(const Pen& g, uint32_t now) {
+  const float x = -56, y = 46;
+  const uint16_t frame = rgb(70, 70, 80), screen = rgb(30, 34, 48);
+  spr.fillRoundRect(g.x(x - 14), g.y(y - 21), g.d(28), g.d(18), 2, frame);
+  spr.fillRect(g.x(x - 12), g.y(y - 19), g.d(24), g.d(14), screen);
+  if (agentNow.mode == AG_WORK) {
+    // lineas de "codigo" que van apareciendo
+    static const uint16_t cc[] = {C_BAR_OK, C_BALL, C_PINK, C_BAR_MID};
+    int lines = 4, shift = (now / 250) % 8;
+    for (int i = 0; i < lines; i++) {
+      int len = 4 + ((i + shift) * 7) % 16;
+      spr.fillRect(g.x(x - 10), g.y(y - 17 + i * 3), g.d(len), max(1.0f, g.d(1.2f)), cc[(i + shift) % 4]);
+    }
+  } else {
+    for (int i = 0; i < 3; i++) {  // pensando: puntitos
+      bool on = (now / 300) % 4 > (uint32_t)i;
+      circle(g, x - 5 + i * 5, y - 12, 1.3f, on ? C_WHITE : screen);
+    }
+  }
+  spr.fillRect(g.x(x - 17), g.y(y - 3), g.d(34), max(2.0f, g.d(3)), rgb(150, 150, 160));
+  if (agentNow.tool[0]) {
+    spr.setTextFont(1);
+    spr.setTextColor(C_CHOCO_MID);
+    spr.setTextDatum(BC_DATUM);
+    spr.drawString(agentNow.tool, max(g.d(30), g.x(x)), g.y(y - 22));
+    spr.setTextDatum(TL_DATUM);
+  }
+}
+
 // ---------------------------------------------------------------------
 //  Escena completa (en el sprite)
 // ---------------------------------------------------------------------
@@ -433,6 +470,28 @@ static void renderScene(uint32_t now) {
         default: break;
       }
     }
+
+    // Reacciones a Claude Code
+    if (anim == A_NONE) {
+      switch (agentNow.mode) {
+        case AG_THINK:
+        case AG_WORK:
+          lookTarget = -2.5f;  // mira el portatil
+          if (agentNow.mode == AG_WORK) bobY += sinf(now / 70.0f) * 0.5f;  // teclea
+          break;
+        case AG_ASK:
+          if (askDismissed) break;
+          f.mouth = MOUTH_OPEN; f.open = 0.5f; f.eyeSize = 1.15f;
+          bobY -= fabsf(sinf(now / 160.0f)) * 4;
+          break;
+        case AG_DONE:
+        case AG_HELLO:
+          f.eyes = EYE_HAPPY; f.mouth = MOUTH_SMILE; f.blush = true;
+          if (agentNow.mode == AG_DONE) bobY -= fabsf(sinf(now / 180.0f)) * 7;
+          break;
+        default: break;
+      }
+    }
   }
 
   switch (anim) {
@@ -468,7 +527,8 @@ static void renderScene(uint32_t now) {
   }
 
   // Mirada: saltos rapidos a un punto, luego vuelve
-  if (!night && anim == A_NONE && now >= nextLook) {
+  const bool atLaptop = agentNow.mode == AG_THINK || agentNow.mode == AG_WORK;
+  if (!night && anim == A_NONE && !atLaptop && now >= nextLook) {
     lookTarget = random(3) == 0 ? 0 : random(-30, 31) / 10.0f;
     nextLook = now + random(1000, 4000);
   }
@@ -521,6 +581,31 @@ static void renderScene(uint32_t now) {
       float r = 2 + random(4);
       spr.drawCircle(body.x(bx), body.y(by), body.d(r), C_BUBBLE);
       spr.drawPixel(body.x(bx - r * 0.4f), body.y(by - r * 0.4f), C_WHITE);
+    }
+    randomSeed(esp_random());
+  }
+
+  // Portatil de Claude Code delante del osito
+  if (!night && (agentNow.mode == AG_THINK || agentNow.mode == AG_WORK)) drawLaptop(ground, now);
+  // "!" cuando Claude pide permiso (aunque este dormido)
+  if (claudeAsking()) {
+    float by = -36 - fabsf(sinf(now / 160.0f)) * 5;
+    circle(ground, 40, by, 8, C_BAR_MID);
+    spr.setTextFont(AH > 120 ? 4 : 2);
+    spr.setTextColor(C_CHOCO);
+    spr.setTextDatum(MC_DATUM);
+    spr.drawString("!", ground.x(40), ground.y(by) + 1);
+    spr.setTextDatum(TL_DATUM);
+  }
+  // Confeti cuando Claude termina
+  if (agentNow.mode == AG_DONE) {
+    static const uint16_t cols[] = {C_HEART, C_BALL, C_BAR_OK, C_BAR_MID, C_PINK_DARK};
+    randomSeed(11);
+    for (int i = 0; i < 26; i++) {
+      int x = random(AW);
+      float speed = 0.04f + random(40) / 1000.0f;
+      int y = (int)fmodf((now - agentSince) * speed + random(AH), AH);
+      spr.fillRect(x + (int)(sinf(now / 200.0f + i) * 4), y, 3, 4, cols[i % 5]);
     }
     randomSeed(esp_random());
   }
@@ -712,7 +797,15 @@ static void doAction(uint8_t item) {
   savePet();
 }
 
+static bool dismissAsk() {
+  if (!claudeAsking()) return false;
+  askDismissed = true;
+  say("Vale! Corre a mirar a Claude");
+  return true;
+}
+
 static void petBear(bool onNose) {
+  if (dismissAsk()) return;
   if (pet.sleeping) {
     say("Zzz...");
     return;
@@ -859,13 +952,14 @@ static void handleInput(uint32_t now) {
     say("Hola! Soy tu osito", 3000);
     menuDirty = true;
     drawStatus(true);
+  } else if (a == B_SHORT && dismissAsk()) {
   } else if (a == B_SHORT) {
     menuSel = (menuSel + 1) % M_COUNT;
     menuDirty = true;
     say(MENU_LABEL[menuSel], 900);
   }
 #ifdef PIN_BTN_B
-  if (pollButton(btnB, now) == B_SHORT) doAction(menuSel);
+  if (pollButton(btnB, now) == B_SHORT && !dismissAsk()) doAction(menuSel);
 #endif
 
 #if HAS_TOUCH
@@ -936,6 +1030,23 @@ static void updateBrain(uint32_t now) {
     portalHint = true;
     say("Configurame: WiFi Osito-Config", 8000);
   }
+  AgentInfo a;
+  if (aiAgent(a)) {
+    agentNow = a;
+    agentSince = now;
+    if (a.mode == AG_ASK) askDismissed = false;
+    if (a.mode == AG_DONE) pet.fun = clamp100(pet.fun + 5);
+  }
+  // Estados de Claude que duran solo un rato
+  if ((agentNow.mode == AG_DONE && now - agentSince > 7000) || (agentNow.mode == AG_HELLO && now - agentSince > 4000))
+    agentNow.mode = AG_NONE;
+  // Recordatorio mientras Claude espera permiso
+  static uint32_t lastNag = 0;
+  if (claudeAsking() && now - agentSince > 15000 && now - lastNag > 20000 && now > msgUntil) {
+    lastNag = now;
+    say("Claude te sigue esperando!", 4000);
+  }
+
   AiReply r;
   if (aiPoll(r)) {
     say(r.text, 5000);

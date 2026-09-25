@@ -21,6 +21,14 @@ struct AiReply {
   Emotion emotion;
 };
 
+// Lo que esta haciendo Claude Code en el PC (llega por los hooks)
+enum AgentMode : uint8_t { AG_NONE, AG_HELLO, AG_THINK, AG_WORK, AG_ASK, AG_DONE };
+
+struct AgentInfo {
+  AgentMode mode;
+  char      tool[26];
+};
+
 void aiBegin();                                        // arranca WiFi + tarea (si hay secrets.h)
 bool aiEnabled();                                      // hay configuracion de WiFi/servidor
 bool aiOnline();                                       // WiFi conectado
@@ -28,3 +36,4 @@ bool aiBusy();                                         // esperando respuesta
 bool aiPortal();                                       // red "Osito-Config" abierta
 bool aiRequest(const char* event, const AiState& st);  // encola un evento; false si ocupado
 bool aiPoll(AiReply& out);                             // true si ha llegado una frase
+bool aiAgent(AgentInfo& out);                          // true si Claude Code ha cambiado de estado

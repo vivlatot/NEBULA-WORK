@@ -118,7 +118,15 @@ Ajustes del servidor (variables de entorno): `OSITO_NOMBRE`, `OSITO_TOKEN`,
 `OSITO_PUERTO` y `OSITO_MODELO` (por defecto `claude-opus-5`; `claude-haiku-4-5` es
 más barato si lo prefieres).
 
-## Siguiente fase
+## 6. El osito vigila a Claude Code 💻
 
-Ver [`docs/INVESTIGACION.md`](docs/INVESTIGACION.md): que el osito reaccione a lo que
-hacen tus agentes de IA en el PC (Claude Code), estilo Claude Desktop Buddy.
+Con los hooks de Claude Code el osito sigue en vivo lo que hace tu agente:
+saca un portátil cuando Claude piensa, muestra la herramienta que usa (`Edit main.cpp`),
+salta con un **"!"** cuando Claude te pide permiso (tócalo para calmarlo) y lanza
+**confeti** cuando termina.
+
+- Probar sin Claude Code: `python bridge/probar_agente.py`
+- Conectar de verdad: `bridge/conectar_claude_code.bat` (o `python bridge/instalar_hooks.py`),
+  y abre una sesión nueva de Claude Code. Quitar: `--quitar`.
+
+👉 Guía de pruebas paso a paso: [`PROBAR.md`](PROBAR.md)
